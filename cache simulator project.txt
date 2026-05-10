@@ -1,0 +1,457 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+struct CacheLine {
+    int block = -1;
+    bool valid = false;
+    bool dirty = false;
+    int lastUsed = 0;
+    int insertedTime = 0;
+};
+
+struct Result {
+    string policy;
+    int hits = 0;
+    int misses = 0;
+    int compulsory = 0;
+    int conflict = 0;
+    int capacity = 0;
+    int memoryWrites = 0;
+
+    double hitRatio = 0;
+    double missRatio = 0;
+    double AMAT_ns = 0;
+
+    vector<vector<CacheLine>> finalCache;
+};
+
+class CacheSimulator {
+public:
+    int totalCacheBlocks;
+    int ways;
+    int sets;
+    string policy;
+    int timer = 0;
+
+    vector<vector<CacheLine>> cache;
+    set<int> seenBlocks;
+
+    CacheSimulator(int totalCacheBlocks, int ways, string policy) {
+        this->totalCacheBlocks = totalCacheBlocks;
+        this->ways = ways;
+        this->policy = policy;
+
+        sets = totalCacheBlocks / ways;
+        cache.resize(sets, vector<CacheLine>(ways));
+    }
+
+    bool access(int block, char operation, Result &res, string writePolicy) {
+        timer++;
+
+        int setIndex = block % sets;
+
+        // HIT
+        for (int i = 0; i < ways; i++) {
+            if (cache[setIndex][i].valid && cache[setIndex][i].block == block) {
+                cache[setIndex][i].lastUsed = timer;
+                res.hits++;
+
+                if (operation == 'W') {
+                    if (writePolicy == "WRITE_THROUGH") {
+                        res.memoryWrites++;
+                    } else {
+                        cache[setIndex][i].dirty = true;
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        // MISS
+        res.misses++;
+
+        if (seenBlocks.find(block) == seenBlocks.end()) {
+            res.compulsory++;
+            seenBlocks.insert(block);
+        } else {
+            bool empty = false;
+
+            for (auto &line : cache[setIndex]) {
+                if (!line.valid) {
+                    empty = true;
+                    break;
+                }
+            }
+
+            if (empty)
+                res.conflict++;
+            else
+                res.capacity++;
+        }
+
+        int replaceIndex = getReplacementIndex(setIndex);
+
+        // Write-back dirty eviction
+        if (cache[setIndex][replaceIndex].valid &&
+            cache[setIndex][replaceIndex].dirty &&
+            writePolicy == "WRITE_BACK") {
+            res.memoryWrites++;
+        }
+
+        cache[setIndex][replaceIndex].block = block;
+        cache[setIndex][replaceIndex].valid = true;
+        cache[setIndex][replaceIndex].lastUsed = timer;
+        cache[setIndex][replaceIndex].insertedTime = timer;
+
+        if (operation == 'W') {
+            if (writePolicy == "WRITE_THROUGH") {
+                cache[setIndex][replaceIndex].dirty = false;
+                res.memoryWrites++;
+            } else {
+                cache[setIndex][replaceIndex].dirty = true;
+            }
+        } else {
+            cache[setIndex][replaceIndex].dirty = false;
+        }
+
+        return false;
+    }
+
+    int getReplacementIndex(int setIndex) {
+        for (int i = 0; i < ways; i++) {
+            if (!cache[setIndex][i].valid)
+                return i;
+        }
+
+        if (policy == "LRU") {
+            int idx = 0;
+
+            for (int i = 1; i < ways; i++) {
+                if (cache[setIndex][i].lastUsed < cache[setIndex][idx].lastUsed)
+                    idx = i;
+            }
+
+            return idx;
+        }
+
+        if (policy == "FIFO") {
+            int idx = 0;
+
+            for (int i = 1; i < ways; i++) {
+                if (cache[setIndex][i].insertedTime < cache[setIndex][idx].insertedTime)
+                    idx = i;
+            }
+
+            return idx;
+        }
+
+        return rand() % ways;
+    }
+};
+
+Result runSimulation(
+    vector<pair<char, int>> sequence,
+    int totalCacheBlocks,
+    int ways,
+    string policy,
+    string writePolicy,
+    double hitTime_ns,
+    double missPenalty_ns
+) {
+    CacheSimulator sim(totalCacheBlocks, ways, policy);
+    Result res;
+    res.policy = policy;
+
+    for (auto x : sequence) {
+        char operation = toupper(x.first);
+        int block = x.second;
+        sim.access(block, operation, res, writePolicy);
+    }
+
+    int total = sequence.size();
+
+    res.hitRatio = (double)res.hits / total;
+    res.missRatio = (double)res.misses / total;
+    res.AMAT_ns = hitTime_ns + res.missRatio * missPenalty_ns;
+    res.finalCache = sim.cache;
+
+    return res;
+}
+
+void printCache(Result &res) {
+    cout << "\nFinal Cache Content:\n";
+
+    for (int i = 0; i < res.finalCache.size(); i++) {
+        cout << "Set " << i << ": ";
+
+        for (int j = 0; j < res.finalCache[i].size(); j++) {
+            if (res.finalCache[i][j].valid) {
+                cout << res.finalCache[i][j].block;
+
+                if (res.finalCache[i][j].dirty)
+                    cout << "(D) ";
+                else
+                    cout << " ";
+            } else {
+                cout << "- ";
+            }
+        }
+
+        cout << endl;
+    }
+}
+
+void printResult(Result &res) {
+    cout << "\n==============================\n";
+    cout << "Replacement Policy: " << res.policy << endl;
+    cout << "Hits: " << res.hits << endl;
+    cout << "Misses: " << res.misses << endl;
+    cout << "Compulsory Misses: " << res.compulsory << endl;
+    cout << "Conflict Misses: " << res.conflict << endl;
+    cout << "Capacity Misses: " << res.capacity << endl;
+    cout << "Memory Writes: " << res.memoryWrites << endl;
+    cout << "Hit Ratio: " << res.hitRatio << endl;
+    cout << "Miss Ratio: " << res.missRatio << endl;
+    cout << "AMAT: " << res.AMAT_ns << " ns" << endl;
+
+    printCache(res);
+}
+
+void compareResults(vector<Result> &results) {
+    cout << "\n===== Comparison Table =====\n";
+
+    cout << left << setw(10) << "Policy"
+         << setw(10) << "Hits"
+         << setw(10) << "Misses"
+         << setw(15) << "HitRatio"
+         << setw(15) << "MissRatio"
+         << setw(15) << "AMAT(ns)"
+         << setw(15) << "MemWrites" << endl;
+
+    for (auto &r : results) {
+        cout << left << setw(10) << r.policy
+             << setw(10) << r.hits
+             << setw(10) << r.misses
+             << setw(15) << r.hitRatio
+             << setw(15) << r.missRatio
+             << setw(15) << r.AMAT_ns
+             << setw(15) << r.memoryWrites << endl;
+    }
+}
+
+void findBlock(Result &res, int target) {
+    bool found = false;
+
+    for (int i = 0; i < res.finalCache.size(); i++) {
+        for (int j = 0; j < res.finalCache[i].size(); j++) {
+            if (res.finalCache[i][j].valid &&
+                res.finalCache[i][j].block == target) {
+
+                cout << "Block " << target
+                     << " is present in Set " << i
+                     << ", Line " << j;
+
+                if (res.finalCache[i][j].dirty)
+                    cout << " and it is Dirty";
+
+                cout << endl;
+                found = true;
+            }
+        }
+    }
+
+    if (!found)
+        cout << "Block " << target << " is NOT present in cache\n";
+}
+
+void solveThreeLevelAMAT() {
+    double L1Time_ns, L2Time_ns, L3Time_ns, memoryTime_ns;
+    double L1HitPercent, L2HitPercent, L3HitPercent;
+
+    cout << "\n===== 3-Level Cache AMAT Calculation =====\n";
+
+    cout << "Enter L1 access time in ns: ";
+    cin >> L1Time_ns;
+
+    cout << "Enter L2 access time in ns: ";
+    cin >> L2Time_ns;
+
+    cout << "Enter L3 access time in ns: ";
+    cin >> L3Time_ns;
+
+    cout << "Enter Main Memory access time in ns: ";
+    cin >> memoryTime_ns;
+
+    cout << "\nEnter L1 hit ratio in percentage: ";
+    cin >> L1HitPercent;
+
+    cout << "Enter L2 hit ratio in percentage: ";
+    cin >> L2HitPercent;
+
+    cout << "Enter L3 hit ratio in percentage: ";
+    cin >> L3HitPercent;
+
+    double L1Hit = L1HitPercent / 100.0;
+    double L2Hit = L2HitPercent / 100.0;
+    double L3Hit = L3HitPercent / 100.0;
+
+    double L1Miss = 1 - L1Hit;
+    double L2Miss = 1 - L2Hit;
+    double L3Miss = 1 - L3Hit;
+
+    double AMAT_ns =
+        L1Time_ns +
+        L1Miss * (
+            L2Time_ns +
+            L2Miss * (
+                L3Time_ns +
+                L3Miss * memoryTime_ns
+            )
+        );
+
+    cout << "\n===== RESULT =====\n";
+    cout << "L1 Miss Rate: " << L1Miss << endl;
+    cout << "L2 Miss Rate: " << L2Miss << endl;
+    cout << "L3 Miss Rate: " << L3Miss << endl;
+    cout << "3-Level AMAT = " << AMAT_ns << " ns" << endl;
+}
+
+int main() {
+    srand(time(0));
+
+    while (true) {
+        cout << "\n========== CACHE PROJECT ==========\n";
+        cout << "1. Single Level Cache Simulation\n";
+        cout << "2. 3-Level AMAT Calculation\n";
+        cout << "3. Exit\n";
+
+        int mainChoice;
+        cout << "Enter choice: ";
+        cin >> mainChoice;
+
+        if (mainChoice == 3)
+            break;
+
+        if (mainChoice == 2) {
+            solveThreeLevelAMAT();
+            continue;
+        }
+
+        if (mainChoice != 1) {
+            cout << "Invalid choice\n";
+            continue;
+        }
+
+        int mappingType;
+
+        cout << "\nSelect Mapping Type:\n";
+        cout << "0. Direct Mapped\n";
+        cout << "1. Set Associative\n";
+        cout << "2. Fully Associative\n";
+        cout << "Enter choice: ";
+        cin >> mappingType;
+
+        int totalCacheBlocks;
+        cout << "Enter total number of cache blocks: ";
+        cin >> totalCacheBlocks;
+
+        int ways;
+
+        if (mappingType == 0) {
+            ways = 1;
+        }
+        else if (mappingType == 1) {
+            cout << "Enter number of ways: ";
+            cin >> ways;
+        }
+        else if (mappingType == 2) {
+            ways = totalCacheBlocks;
+        }
+        else {
+            cout << "Invalid mapping type\n";
+            continue;
+        }
+
+        if (totalCacheBlocks <= 0 || ways <= 0 || totalCacheBlocks % ways != 0) {
+            cout << "Invalid input: cache blocks must be positive and divisible by ways\n";
+            continue;
+        }
+
+        int n;
+        cout << "Enter number of memory accesses: ";
+        cin >> n;
+
+        if (n <= 0) {
+            cout << "Invalid number of accesses\n";
+            continue;
+        }
+
+        vector<pair<char, int>> sequence(n);
+
+        cout << "\nEnter operation and block number:\n";
+        cout << "Example: R 5 or W 5\n";
+
+        for (int i = 0; i < n; i++) {
+            cin >> sequence[i].first >> sequence[i].second;
+            sequence[i].first = toupper(sequence[i].first);
+        }
+
+        int wp;
+        cout << "\nSelect Write Policy:\n";
+        cout << "1. Write Through\n";
+        cout << "2. Write Back\n";
+        cout << "Enter choice: ";
+        cin >> wp;
+
+        string writePolicy;
+
+        if (wp == 1)
+            writePolicy = "WRITE_THROUGH";
+        else if (wp == 2)
+            writePolicy = "WRITE_BACK";
+        else {
+            cout << "Invalid write policy\n";
+            continue;
+        }
+
+        double hitTime_ns, missPenalty_ns;
+
+        cout << "\nEnter hit time in ns: ";
+        cin >> hitTime_ns;
+
+        cout << "Enter miss penalty in ns: ";
+        cin >> missPenalty_ns;
+
+        vector<string> policies = {"LRU", "FIFO", "Random"};
+        vector<Result> results;
+
+        for (string policy : policies) {
+            Result r = runSimulation(
+                sequence,
+                totalCacheBlocks,
+                ways,
+                policy,
+                writePolicy,
+                hitTime_ns,
+                missPenalty_ns
+            );
+
+            results.push_back(r);
+            printResult(results.back());
+        }
+
+        compareResults(results);
+
+        int target;
+        cout << "\nEnter a block number to check whether it is in cache: ";
+        cin >> target;
+
+        for (auto &r : results) {
+            cout << "\nFor policy " << r.policy << ":\n";
+            findBlock(r, target);
+        }
+    }
+
+    return 0;
+}
