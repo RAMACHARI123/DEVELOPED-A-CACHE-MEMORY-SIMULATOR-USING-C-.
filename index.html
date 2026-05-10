@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Cache Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-animation"></div>
+    <div class="app-container">
+        <header>
+            <h1>Cache Simulator</h1>
+            <p>Analyze cache performance with precision</p>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="simulator">Single Level Cache</button>
+                <button class="tab-btn" data-tab="amat">3-Level AMAT</button>
+            </div>
+        </header>
+
+        <!-- Simulator Tab -->
+        <main id="simulator" class="tab-content active">
+            <div class="grid-layout">
+                <!-- Configuration Panel -->
+                <section class="glass-panel config-panel">
+                    <h2>Configuration</h2>
+                    
+                    <div class="form-group">
+                        <label for="mappingType">Mapping Type</label>
+                        <select id="mappingType">
+                            <option value="0">Direct Mapped</option>
+                            <option value="1">Set Associative</option>
+                            <option value="2">Fully Associative</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="totalCacheBlocks">Total Cache Blocks</label>
+                        <input type="number" id="totalCacheBlocks" min="1" value="16">
+                    </div>
+
+                    <div class="form-group" id="waysGroup" style="display: none;">
+                        <label for="ways">Number of Ways</label>
+                        <input type="number" id="ways" min="1" value="2">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="writePolicy">Write Policy</label>
+                        <select id="writePolicy">
+                            <option value="WRITE_THROUGH">Write Through</option>
+                            <option value="WRITE_BACK">Write Back</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="hitTime">Hit Time (ns)</label>
+                            <input type="number" id="hitTime" min="0" step="0.1" value="1.0">
+                        </div>
+                        <div class="form-group">
+                            <label for="missPenalty">Miss Penalty (ns)</label>
+                            <input type="number" id="missPenalty" min="0" step="0.1" value="10.0">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Sequence Panel -->
+                <section class="glass-panel sequence-panel">
+                    <h2>Memory Access Sequence</h2>
+                    
+                    <div class="sequence-input">
+                        <div class="form-row">
+                            <select id="opType">
+                                <option value="R">Read (R)</option>
+                                <option value="W">Write (W)</option>
+                            </select>
+                            <input type="number" id="blockNum" placeholder="Block #">
+                            <button id="addSeqBtn" class="btn primary">Add</button>
+                        </div>
+                        <div class="form-row">
+                            <input type="text" id="bulkInput" placeholder="Bulk input e.g. R5, W2, R1">
+                            <button id="bulkAddBtn" class="btn secondary">Parse</button>
+                        </div>
+                    </div>
+
+                    <div class="sequence-list-container">
+                        <ul id="sequenceList">
+                            <!-- Items go here -->
+                        </ul>
+                        <button id="clearSeqBtn" class="btn text-danger">Clear List</button>
+                    </div>
+                </section>
+            </div>
+
+            <div class="action-bar">
+                <button id="runSimBtn" class="btn hero">Run Simulation</button>
+            </div>
+
+            <!-- Results Section -->
+            <section id="simResults" class="glass-panel results-panel hidden">
+                <h2>Simulation Results</h2>
+                
+                <div class="results-table-wrapper">
+                    <table id="comparisonTable">
+                        <thead>
+                            <tr>
+                                <th>Policy</th>
+                                <th>Hits</th>
+                                <th>Misses</th>
+                                <th>Hit Ratio</th>
+                                <th>Miss Ratio</th>
+                                <th>AMAT (ns)</th>
+                                <th>Mem Writes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Results populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="detailed-results" id="detailedResults">
+                    <!-- Policy specific details and cache visuals -->
+                </div>
+
+                <div class="search-block form-row mt-4">
+                    <input type="number" id="searchBlockInput" placeholder="Find block # in cache">
+                    <button id="searchBlockBtn" class="btn secondary">Search</button>
+                </div>
+                <div id="searchBlockResult" class="search-result"></div>
+            </section>
+        </main>
+
+        <!-- AMAT Tab -->
+        <main id="amat" class="tab-content">
+            <section class="glass-panel amat-panel">
+                <h2>3-Level AMAT Calculation</h2>
+                
+                <div class="grid-3col">
+                    <div class="level-card">
+                        <h3>L1 Cache</h3>
+                        <div class="form-group">
+                            <label>Access Time (ns)</label>
+                            <input type="number" id="l1Time" step="0.1" value="1.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Hit Ratio (%)</label>
+                            <input type="number" id="l1Hit" min="0" max="100" step="0.1" value="90">
+                        </div>
+                    </div>
+
+                    <div class="level-card">
+                        <h3>L2 Cache</h3>
+                        <div class="form-group">
+                            <label>Access Time (ns)</label>
+                            <input type="number" id="l2Time" step="0.1" value="5.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Hit Ratio (%)</label>
+                            <input type="number" id="l2Hit" min="0" max="100" step="0.1" value="80">
+                        </div>
+                    </div>
+
+                    <div class="level-card">
+                        <h3>L3 Cache</h3>
+                        <div class="form-group">
+                            <label>Access Time (ns)</label>
+                            <input type="number" id="l3Time" step="0.1" value="20.0">
+                        </div>
+                        <div class="form-group">
+                            <label>Hit Ratio (%)</label>
+                            <input type="number" id="l3Hit" min="0" max="100" step="0.1" value="70">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="memory-card">
+                    <h3>Main Memory</h3>
+                    <div class="form-group">
+                        <label>Access Time (ns)</label>
+                        <input type="number" id="memTime" step="0.1" value="100.0">
+                    </div>
+                </div>
+
+                <button id="calcAmatBtn" class="btn hero mt-4">Calculate AMAT</button>
+
+                <div id="amatResults" class="amat-results hidden">
+                    <div class="result-box">
+                        <span class="label">L1 Miss Rate</span>
+                        <span class="val" id="resL1Miss">-</span>
+                    </div>
+                    <div class="result-box">
+                        <span class="label">L2 Miss Rate</span>
+                        <span class="val" id="resL2Miss">-</span>
+                    </div>
+                    <div class="result-box">
+                        <span class="label">L3 Miss Rate</span>
+                        <span class="val" id="resL3Miss">-</span>
+                    </div>
+                    <div class="result-box highlight">
+                        <span class="label">Total AMAT</span>
+                        <span class="val" id="resAmat">-</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
